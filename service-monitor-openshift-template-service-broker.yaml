@@ -1,0 +1,22 @@
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: openshift-template-service-broker
+  labels:
+    k8s-app: apiserver
+spec:
+  jobLabel: component
+  selector:
+    matchLabels:
+      component: apiserver
+      provider: kubernetes
+  endpoints:
+  - port: https
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      caFile: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+      serverName: apiserver.openshift-template-service-broker.svc
+    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    
