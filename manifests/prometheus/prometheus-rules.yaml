@@ -1,0 +1,209 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-k8s-rules
+  labels:
+    role: prometheus-rulefiles
+    prometheus: k8s
+data:
+    kube.rules.yaml: |+
+      groups:
+      - name: kubernetes-rules
+        rules:
+
+          - alert: DockerLatencyHigh
+            expr: round(max(kubelet_docker_operations_latency_microseconds{quantile="0.9"}) by (instance) / 1e+06, .1) > 10
+            for: 5m
+            labels:
+              severity: warning
+              instance: "{{ $labels.instance }}"
+            annotations:
+              message: Docker latency is high
+              summary: Docker latency is high
+              description: "Docker latency is {{ $value }} seconds for 90% of kubelet operations"
+              severity: warning
+              alertType: latency
+              instance: "{{ $labels.instance }}"
+              component: container runtime
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIDown
+            expr: up{job="kubernetes-apiservers"} == 0
+            for: 10m
+            labels:
+              severity: error
+            annotations:
+              summary: Kubernetes API server unreachable
+              message: Kubernetes API server unreachable
+              description: "Kubernetes API server unreachable on {{ $labels.cluster }} instance {{ $labels.instance }}"
+              severity: error
+              alertType: availability
+              miqTarget: ExtManagementSystem
+              instance: "{{ $labels.instance }}"
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIAbsent
+            expr: absent(up{job="kubernetes-apiservers"})
+            for: 5m
+            labels:
+              severity: error
+            annotations:
+              summary: Kubernetes API server absent
+              message: Kubernetes API server absent
+              description: Kubernetes API server absent
+              severity: error
+              alertType: availability
+              miqTarget: ExtManagementSystem
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIErrorsHigh
+            expr: rate(apiserver_request_count{code=~"^(?:5..)$"}[5m]) / rate(apiserver_request_count[5m]) * 100 > 5
+            for: 5m
+            labels:
+              severity: warning
+              instance: "{{ $labels.instance }}"
+            annotations:
+              summary: Kubernetes API server errors high
+              message: Kubernetes API server errors high
+              description: "Kubernetes API server errors (response code 5xx) are {{ $value }}% of total requests"
+              severity: warning
+              alertType: errors
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIClusterLatencyHigh
+            expr: round(apiserver_request_latencies_summary{quantile="0.9",scope="cluster",subresource!="log",verb!~"^(?:WATCH|WATCHLIST|LIST|PROXY|CONNECT)$"} / 1e+06, .1) > 1
+            for: 10m
+            labels:
+              severity: warning
+              instance: "{{ $labels.instance }}"
+            annotations:
+              summary: Kubernetes API server cluster latency high
+              message: Kubernetes API server cluster latency high
+              description: "Kubernetes API server request latency is {{ $value }} seconds for 90% of cluster requests. NOTE: long-standing requests (e.g. watch, watchlist, list, proxy, connect) have been removed from alert query."
+              severity: warning
+              alertType: latency
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIGetLatencyHigh
+            expr: round(apiserver_request_latencies_summary{quantile="0.99",subresource!="log",verb="GET"} / 1e+06, .1) > 1
+            for: 5m
+            labels:
+              severity: error
+              instance: "{{ $labels.instance }}"
+            annotations:
+              summary: Kubernetes API server GET latency high
+              message: Kubernetes API server GET latency high
+              description: "Kubernetes API server request latency is {{ $value }} seconds for 99% of GET requests."
+              severity: error
+              alertType: latency
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+          - alert: KubernetesAPIPOSTLatencyHigh
+            expr: round(apiserver_request_latencies_summary{quantile="0.99",subresource!="log",verb=~"^(?:POST|PUT|PATCH)$"} / 1e+06, .1) > 2
+            for: 10m
+            labels:
+              severity: warning
+              instance: "{{ $labels.instance }}"
+            annotations:
+              summary: "Kubernetes API server POST|PUT|PATCH|DELETE latency high"
+              message: "Kubernetes API server POST|PUT|PATCH|DELETE latency high"
+              description: "Kubernetes API server request latency is {{ $value }} seconds for 99% of POST|PUT|PATCH|DELETE requests."
+              severity: warning
+              alertType: latency
+              component: kubernetes
+              selfHealing: false
+              url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+    node.rules.yaml: |+
+      groups:
+      - name: Node rules
+        rules:
+        - alert: Node Down
+          expr: up{job="kubernetes-nodes"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            instance: "{{$labels.instance}}"
+          annotations:
+            severity: warning
+            instance: "{{$labels.instance}}"
+            summary: "{{$labels.instance}} is down"
+            description: "{{$labels.instance}} is down"
+            message: "{{$labels.instance}} is down"
+            selfHealing: false
+            url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+        - alert: DeadMansSwitch
+          expr: vector(1)
+          labels:
+            severity: info
+            team: monitoring
+          annotations:
+            description: This is a DeadMansSwitch meant to ensure that the entire Alerting pipeline is functional. It always fires. Integrating tools can alert on its absence.
+            summary: "Dead man's switch"
+            message: "Dead man's switch"
+            severity: info
+            selfHealing: false
+            url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+
+      - name: Metrics rules
+        rules:
+        - alert: Node exporter down
+          expr: up{job="kubernetes-nodes-exporter"} == 0
+          for: 5m
+          labels:
+            severity: error
+            instance: "{{$labels.instance}}"
+            team: monitoring
+          annotations:
+            severity: error
+            instance: "{{$labels.instance}}"
+            summary: "{{$labels.instance}} node exporter is down"
+            description: "{{$labels.instance}} node exporter is down"
+            message: "{{$labels.instance}} node exporter is down"
+            component: monitoring
+            alertType: availability
+            selfHealing: false
+            url: "https://github.com/openshift/ops-sop/tree/master/v3/alerts"
+
+        - alert: Node exporter absent
+          expr: absent(up{job="kubernetes-nodes-exporter"})
+          for: 5m
+          labels:
+            severity: error
+            team: monitoring
+          annotations:
+            summary: Kubernetes node exporter absent
+            message: Kubernetes node exporter absent
+            description: Kubernetes node exporter absent
+            miqTarget: ExtManagementSystem
+            severity: error
+            alertType: availability
+            component: monitoring
+            selfHealing: false
+            url: https://github.com/openshift/ops-sop/tree/master/v3/alerts
+    recording.rules.yaml: |+
+      groups:
+      - name: aggregate_container_resources
+        rules:
+        - record: container_cpu_usage_rate
+          expr: sum without (cpu) (rate(container_cpu_usage_seconds_total[5m]))
+        - record: container_memory_rss_by_type
+          expr: container_memory_rss{id=~"/|/system.slice|/kubepods.slice"} > 0
+        - record: container_cpu_usage_percent_by_host
+          expr: sum by (hostname,type)(rate(container_cpu_usage_seconds_total{id="/"}[5m])) / on (hostname,type) machine_cpu_cores
+        - record: apiserver_request_count_rate_by_resources
+          expr: sum without (client,instance,contentType) (rate(apiserver_request_count[5m]))
+        - record: prometheus_config_last_reload_success_since_minutes
+          expr: round((time() - prometheus_config_last_reload_success_timestamp_seconds) / 60, 1)
+
